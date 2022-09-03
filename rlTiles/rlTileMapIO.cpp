@@ -28,6 +28,7 @@
 *
 **********************************************************************************************/
 
+#include <algorithm>
 #include "rlTileMap.h"
 #include "PUGIXML/pugixml.hpp"
 
@@ -139,6 +140,122 @@ bool ReadTileSetFile(const std::string& tilesetFileName, int idOffset, RLTileMap
     return ReadTileSetNode(root, idOffset, map);
 }
 
+std::vector<std::string> split(const char* str, char c = ' ')
+{
+    std::vector<std::string> result;
+
+    do
+    {
+        const char* begin = str;
+
+        while (*str != c && *str)
+            str++;
+
+        result.push_back(std::string(begin, str));
+    } while (0 != *str++);
+
+    return result;
+}
+
+bool readObjectlayer(pugi::xml_node root, RLTileMap map){
+
+    int layerID = root.attribute("id").as_int();
+
+    std::string name = root.attribute("name").as_string();
+
+    map.Objects[layerID] = RLTileObjectLayer();
+
+    RLTileObjectLayer& layer = map.Objects[layerID];
+
+    layer.ID = layerID;
+    layer.name = name;
+
+    for(auto child : root.children()){
+
+        std::string Cname = child.name();
+
+        if(Cname=="object"){
+            int id = child.attribute("id").as_int();
+
+            RLTileObject obj = {};
+
+            if(!child.child("polygon").empty() || !child.child("polyline").empty()){
+                auto poly = RlTilePolygonObject();
+
+                auto points = split(child.child("polygon").attribute("points").as_string(), ' ');
+
+                for(auto point: points){
+                    auto coords = split(point.c_str(), ',');
+                    if (coords.size() == 2)
+                    {
+                        Vector2 p = { (float)atof(coords[0].c_str()), (float)atof(coords[1].c_str()) };
+                        poly.Points.emplace_back(p);
+                    }
+                }
+                obj = poly;
+
+            }else if(!child.child("text").empty()){
+                auto text = RlTileTextObject();
+                auto textEntity = child.child("text");
+
+                text.Text = textEntity.child_value();
+                if(!textEntity.attribute("pixelsize").empty())
+                    text.FontSize = textEntity.attribute("pixelsize").as_int();
+
+
+                obj = text;
+            }else{
+                obj = RLTileObject();
+            }
+
+            if (!child.child("polygon").empty())
+                obj.Subtype = RLTileObject::SubTypes::Polygon;
+            else if (!child.child("polyline").empty())
+                obj.Subtype = RLTileObject::SubTypes::Polyline;
+            else if (!child.child("ellipse").empty())
+                obj.Subtype = RLTileObject::SubTypes::Ellipse;
+            else if (!child.child("text").empty())
+                obj.Subtype = RLTileObject::SubTypes::Text;
+            else if (!child.child("point").empty())
+                obj.Subtype = RLTileObject::SubTypes::Point;
+            else
+                obj.Subtype = RLTileObject::SubTypes::None;
+
+            obj.Name = child.attribute("name").as_string();
+            obj.Type = child.attribute("type").as_string();
+            obj.Template = child.attribute("template").as_string();
+            obj.Bounds.x = child.attribute("x").as_float();
+            obj.Bounds.y = child.attribute("y").as_float();
+            obj.Bounds.width = child.attribute("width").as_float();
+            obj.Bounds.height = child.attribute("height").as_float();
+            obj.Rotation = child.attribute("rotation").as_float();
+            obj.Visible = child.attribute("visible").empty() || child.attribute("visible").as_int() != 0;
+            obj.GidTile = child.attribute("gid").as_int();
+
+            auto properties = child.child("properties");
+            if (!properties.empty())
+            {
+                for (auto prop : properties.children())
+                {
+                    RLTileObject::Property propertyRectord;
+                    propertyRectord.Name = prop.attribute("name").as_string();
+                    propertyRectord.Type = prop.attribute("type").as_string();
+                    propertyRectord.Value = prop.attribute("value").as_string();
+
+                    obj.Properties.emplace_back(std::move(propertyRectord));
+                }
+            }
+
+            layer.ObjectGroup.emplace_back(obj);
+        }
+
+    }
+
+    map.Objects[layerID] = layer;
+
+    return true;
+}
+
 bool ReadTiledXML(pugi::xml_document& doc, RLTileMap& map, const std::string& filePath = std::string())
 {
     auto root = doc.child("map");
@@ -179,7 +296,7 @@ bool ReadTiledXML(pugi::xml_document& doc, RLTileMap& map, const std::string& fi
         }
         else if (childName == "objectgroup")
         {
-
+            readObjectlayer(child, map);
         }
         else if (childName == "layer")
         {
@@ -190,6 +307,7 @@ bool ReadTiledXML(pugi::xml_document& doc, RLTileMap& map, const std::string& fi
             map.Layers[layerID] = RLTileLayer();
 
             RLTileLayer& layer = map.Layers[layerID];
+            layer.name = name;
             layer.Width = width;
             layer.Height = height;
             layer.TileWidth = tilewidth;
@@ -240,7 +358,7 @@ bool ReadTiledXML(pugi::xml_document& doc, RLTileMap& map, const std::string& fi
 
                         val &= ~(FLIPPED_HORIZONTALLY_FLAG | FLIPPED_VERTICALLY_FLAG | FLIPPED_DIAGONALLY_FLAG);
                         tile.TileID = static_cast<uint16_t>(val);
-   
+
                         layer.Tiles.emplace_back(tile);
                         posX++;
 
@@ -258,6 +376,7 @@ bool RLReadTileMap(const std::string& filename, RLTileMap& map)
 {
     map.Layers.clear();
     map.Sheets.clear();
+    map.Objects.clear();
 
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_file(filename.c_str());
@@ -268,6 +387,7 @@ bool RLReadTileMapFromMemory(void* buffer, size_t bufferSize, RLTileMap& map)
 {
     map.Layers.clear();
     map.Sheets.clear();
+    map.Objects.clear();
 
     pugi::xml_document doc;
     pugi::xml_parse_result result = doc.load_buffer(buffer, bufferSize);

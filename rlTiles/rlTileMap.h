@@ -6,7 +6,7 @@
 *
 *   LICENSE: MIT
 *
-*   Copyright (c) 2022 Jeffery Myers
+*   Copyright (c) 2020 Jeffery Myers
 *
 *   Permission is hereby granted, free of charge, to any person obtaining a copy
 *   of this software and associated documentation files (the "Software"), to deal
@@ -28,15 +28,16 @@
 *
 **********************************************************************************************/
 
-
 #pragma once
 
 #include "raylib.h"
 #include "raymath.h"
 
+#include <stdint.h>
+#include <string>
 #include <vector>
 #include <map>
-#include <string>
+#include <memory>
 
 class RLTileSheet
 {
@@ -50,7 +51,7 @@ public:
 
     inline Rectangle GetFrame(int tileID)
     {
-        size_t index = tileID - StartFrame;
+        int index = tileID - StartFrame;
         if (index >= 0 && index < Tiles.size())
             return Tiles[index];
 
@@ -64,7 +65,7 @@ enum class RLTiledMapTypes
     Isometric,
 };
 
-struct RLTile
+ struct RLTile
 {
     bool FlipX = false;
     bool FilpY = false;
@@ -73,18 +74,132 @@ struct RLTile
     int16_t TileID = -1;
 };
 
+
 class RLTileLayer
 {
 public:
-    int ID = 0;
     int Width = 0;
     int Height = 0;
     int TileWidth = 0;
     int TileHeight = 0;
 
+    bool IsObject = false;
+
     std::vector<RLTile> Tiles;
 
     Vector2 GetDisplayLocation(int x, int y, RLTiledMapTypes mode);
+
+    int ID = 0;
+    std::string name;
+};
+
+class RLTileObject{
+
+public:
+    int ID = 0;
+    std::string Name;
+    std::string Type;
+
+    Rectangle Bounds = {};
+    int Rotation = 0;
+
+    int GidTile = -1; //A reference to a tile. (optional)
+    bool Visible = true;
+
+    std::string Template;
+    //TODO: read templates
+
+    enum class SubTypes
+    {
+        None,
+        Ellipse,
+        Point,
+        Polygon,
+        Polyline,
+        Text,
+    };
+
+    SubTypes Subtype = SubTypes::None;
+
+    class Property
+    {
+    public:
+        std::string Name;
+        std::string Type;
+        std::string Value;
+
+        inline int GetInt() const
+        {
+            if (Type != "int" || Value.empty())
+                return 0;
+
+            return atoi(Value.c_str());
+        }
+
+        inline float GetFloat() const
+        {
+            if (Type != "float" || Value.empty())
+                return 0;
+
+            return float(atof(Value.c_str()));
+        }
+
+        inline const char* GetString() const
+        {
+            return Value.c_str();
+        }
+    };
+
+    std::vector<Property> Properties;
+
+    inline const Property* GetProperty(const char* Name) const
+    {
+        for (const auto& prop : Properties)
+        {
+            if (prop.Name == Name)
+                return &prop;
+        }
+        return nullptr;
+    }
+
+};
+
+
+class RlTilePointObject : public RLTileObject{
+public:
+    Vector2 Point;
+};
+
+class RlTilePolygonObject : public RLTileObject
+{
+public:
+    std::vector<Vector2> Points;
+};
+
+class RlTileTextObject : public RLTileObject
+{
+public:
+    std::string Text;
+    Color TextColor = WHITE;
+    bool Wrap = false;
+
+    int FontSize = 20;
+    std::string FontFamily;
+    bool Bold = false;
+    bool Italic = false;
+    bool Underline = false;
+    bool Strikeout = false;
+    bool Kerning = true;
+    std::string HorizontalAlignment = "left";
+    std::string VerticalAlignment = "top";
+};
+
+class RLTileObjectLayer : public RLTileLayer{
+public:
+    RLTileObjectLayer() { IsObject = true;}
+
+    std::vector<RLTileObject> ObjectGroup;
+
 };
 
 class RLTileMap
@@ -92,6 +207,7 @@ class RLTileMap
 public:
     std::map<int, RLTileSheet> Sheets;
     std::map<int, RLTileLayer> Layers;
+    std::map<int, RLTileObjectLayer> Objects;
 
     RLTiledMapTypes MapType = RLTiledMapTypes::Orthographic;
 
