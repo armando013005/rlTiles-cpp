@@ -2,7 +2,7 @@
 *
 *   raylibExtras * Utilities and Shared Components for Raylib
 *
-*   RLTiles * Tiled map rendering
+*   RLTiles * Tiled map rndering
 *
 *   LICENSE: MIT
 *
